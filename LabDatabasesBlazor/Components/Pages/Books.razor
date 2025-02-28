@@ -1,0 +1,212 @@
+﻿@page "/books"
+@rendermode InteractiveServer
+@using LabDatabasesBlazor.Model
+@using LabDatabasesBlazor.Service
+
+@inject BookService BookService
+
+<PageTitle>Books</PageTitle>
+<h3>Books</h3>
+
+@if (_books == null)
+{
+    <p>Loading books...</p>
+}
+else if (!_books.Any())
+{
+    <p>No books available...</p>
+}
+else
+{
+    <h3>Add a New Book</h3>
+    <EditForm Model="Book" OnValidSubmit="AddBook" FormName="AddNewBookForm">
+        <div class="mb-4">
+            <InputText @bind-Value="Book.Title" placeholder="Title" class="form-control mb-2" />
+            <InputText @bind-Value="Book.Author" placeholder="Author" class="form-control mb-2" />
+            <InputDate @bind-Value="Book.PublishedDate" class="form-control mb-2" />
+            <button type="submit" class="btn btn-primary">Add Book</button>
+        </div>
+    </EditForm>
+
+    @if (editBook != null)
+    {
+        <h3>Edit Book</h3>
+        <EditForm Model="editBook" OnValidSubmit="UpdateBook" FormName="EditBookForm">
+            <div class="mb-4">
+                <InputText @bind-Value="editBook.Title" placeholder="Title" class="form-control mb-2" />
+                <InputText @bind-Value="editBook.Author" placeholder="Author" class="form-control mb-2" />
+                <InputDate @bind-Value="editBook.PublishedDate" class="form-control mb-2" />
+                <button type="submit" class="btn btn-success">Save Changes</button>
+                <button type="button" class="btn btn-secondary ml-2" @onclick="CancelEdit">Cancel</button>
+            </div>
+        </EditForm>
+    }
+
+    <div class="container">
+        <div class="row">
+            @foreach (var book in _books)
+            {
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h3 class="card-title">@book.Title</h3>
+                            <p><strong>Author:</strong> @book.Author</p>
+                            <p><strong>Published Date:</strong> @book.PublishedDate.ToString("yyyy-MM-dd")</p>
+                            <button class="btn btn-warning" @onclick="() => EditBook(book)">Edit</button>
+                            <button class="btn btn-danger ml-2" @onclick="() => DeleteBook(book.Id)">Delete</button>
+                        </div>
+
+                        @if (book.Reviews != null && book.Reviews.Count > 0)
+                        {
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item">
+                                    <h4>Reviews:</h4>
+                                </li>
+                                @foreach (var review in book.Reviews)
+                                {
+                                    <li class="list-group-item">
+                                        <p><strong>Reviewer:</strong> @review.ReviewerName</p>
+                                        <p><strong>Rating:</strong> @review.Rating</p>
+                                        <p><strong>Comment:</strong> @review.Comment</p>
+                                        <button class="btn btn-warning btn-sm" @onclick="() => StartEditingReview(book, review)">Edit Review</button>
+                                        <button class="btn btn-danger btn-sm ml-2" @onclick="() => DeleteReview(book, review)">Delete Review</button>
+                                    </li>
+                                }
+                            </ul>
+                        }
+
+                        <div class="card-footer">
+                            <h4>Add a Review</h4>
+                            <EditForm Model="newReview" OnValidSubmit="() => AddReview(book.Id)" FormName="AddReviewForm">
+                                <InputText @bind-Value="newReview.ReviewerName" placeholder="Reviewer Name" class="form-control mb-2" />
+                                <InputNumber @bind-Value="newReview.Rating" placeholder="Rating (1-5)" class="form-control mb-2" />
+                                <InputText @bind-Value="newReview.Comment" placeholder="Comment" class="form-control mb-2" />
+                                <button type="submit" class="btn btn-primary">Add Review</button>
+                            </EditForm>
+
+                            @if (editReview != null && bookBeingEdited?.Id == book.Id)
+                            {
+                                <h4>Edit Review</h4>
+                                <EditForm Model="editReview" OnValidSubmit="() => UpdateReview(book.Id, editReview)">
+                                    <InputText @bind-Value="editReview.ReviewerName" placeholder="Reviewer Name" class="form-control mb-2" readonly />
+                                    <InputNumber @bind-Value="editReview.Rating" placeholder="Rating (1-5)" class="form-control mb-2" />
+                                    <InputText @bind-Value="editReview.Comment" placeholder="Comment" class="form-control mb-2" />
+                                    <button type="submit" class="btn btn-success">Save Review</button>
+                                    <button type="button" class="btn btn-secondary ml-2" @onclick="CancelEditReview">Cancel</button>
+                                </EditForm>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromForm]
+    private Book Book { get; set; } = new Book(); // New book to add
+    private List<Book>? _books = null; // All books loaded from the database
+    private Book? editBook = null; // Book being edited
+    private Review newReview = new Review(); // New review to add
+    private Review? editReview = null; // Review being edited
+    private Book? bookBeingEdited = null; // Reference to the book being edited for review
+
+    protected override async Task OnInitializedAsync()
+    {
+        _books = await BookService.GetBooksAsync();
+    }
+
+    // CREATE Operation: Add a new book
+    protected async Task AddBook()
+    {
+        await BookService.AddBookAsync(Book);
+        Book = new Book(); // Clear form after adding the book
+        _books = await BookService.GetBooksAsync(); // Refresh the list of books
+    }
+
+    // DELETE Operation: Delete a book
+    protected async Task DeleteBook(string id)
+    {
+        Console.WriteLine($"Attempting to delete book with ID: {id}");
+        await BookService.DeleteBookAsync(id);
+        _books = await BookService.GetBooksAsync();
+    }
+
+    // EDIT: Populate edit form with book data
+    private void EditBook(Book book)
+    {
+        editBook = new Book
+        {
+            Id = book.Id,
+            Title = book.Title,
+            Author = book.Author,
+            PublishedDate = book.PublishedDate,
+            Reviews = new List<Review>(book.Reviews) // Deep copy reviews
+        };
+    }
+
+    // CANCEL Edit
+    private void CancelEdit()
+    {
+        editBook = null; // Clear edit form
+    }
+
+    // UPDATE Operation: Save changes to book
+    private async Task UpdateBook()
+    {
+        if (editBook != null)
+        {
+            await BookService.ReplaceBookAsync(editBook.Id, editBook);
+            _books = await BookService.GetBooksAsync(); // Refresh the list of books
+            editBook = null; // Clear edit form
+        }
+    }
+
+    // CREATE Operation: Add a review to a book
+    private async Task AddReview(string bookId)
+    {
+        if (!string.IsNullOrWhiteSpace(newReview.ReviewerName) && newReview.Rating > 0)
+        {
+            await BookService.AddReviewAsync(bookId, newReview);
+            newReview = new Review(); // Clear form after adding review
+            _books = await BookService.GetBooksAsync(); // Refresh the list of books
+        }
+    }
+
+    // DELETE Operation: Delete a review from a book
+    private async Task DeleteReview(Book book, Review review)
+    {
+        book.Reviews.Remove(review);
+        await BookService.ReplaceBookAsync(book.Id, book);
+        _books = await BookService.GetBooksAsync(); // Refresh the list of books
+    }
+
+    // EDIT Operation: Start editing a review
+    private void StartEditingReview(Book book, Review review)
+    {
+        editReview = new Review
+        {
+            ReviewerName = review.ReviewerName,
+            Rating = review.Rating,
+            Comment = review.Comment
+        };
+        bookBeingEdited = book; // Set the book being edited
+    }
+
+    // UPDATE Operation: Save changes to a review
+    private async Task UpdateReview(string bookId, Review editReview)
+    {
+        await BookService.UpdateReviewAsync(bookId, editReview);
+        _books = await BookService.GetBooksAsync(); // Refresh the list of books
+        CancelEditReview();
+           
+    }
+
+    // CANCEL Review Edit
+    private void CancelEditReview()
+    {
+        editReview = null; // Clear edit review form
+        bookBeingEdited = null; // Clear the book reference
+    }
+}
